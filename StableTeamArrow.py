@@ -38,7 +38,6 @@ def user_join_callback(scene, camera, msg):
     cameras[camera.object_id] = camera
     for player in players.values():
         for arrow in player.arrows:
-            print(arrow.data.position)
             scene.update_object(arrow)
     # print(camera.data.color)
 def user_left_callback(scene, camera, msg):
@@ -197,7 +196,6 @@ async def animate_arrow(start, end, arrow, time, player, expire=False):
         # print("End:", end)
         # await scene.sleep(50)
         # scene.update_object(arrow)
-        print("Position:", arrow.data.position, "Rotation:", arrow.data.rotation)
 def scaleColor(s, color):
     return Color(int(s * color.red), int(s * color.green), int(s * color.blue))
 def make_box(start, rotation):
@@ -257,7 +255,6 @@ def target_handler(scene, evt, msg):
             scene.event_loop.loop.create_task(
                 animate_arrow(tStart, worldCoordsToTarget(wEnd), arrow, time + 4000, player, True)
             )
-            print("Expiring")
         else:
             player.arrows.append(arrow)
             scene.event_loop.loop.create_task(animate_arrow(tStart, tEnd, arrow, time, player))
@@ -291,11 +288,9 @@ def rotate_handler(s, evt, msg):
         difference += 2 * pi
     if difference > pi:
         difference = 2 * pi - difference
-    print(difference)
     time = (difference / pi) * 1000 * 2
     # print("Hi1")
     # print("Time:", time)
-    print(targetParent.data.rotation)
     target_rotating = True
     targetParent.dispatch_animation(
         Animation(
