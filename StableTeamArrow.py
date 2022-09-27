@@ -38,6 +38,7 @@ def user_join_callback(scene, camera, msg):
     cameras[camera.object_id] = camera
     for player in players.values():
         for arrow in player.arrows:
+            print(arrow.data.position)
             scene.update_object(arrow)
     # print(camera.data.color)
 def user_left_callback(scene, camera, msg):
@@ -196,6 +197,7 @@ async def animate_arrow(start, end, arrow, time, player, expire=False):
         # print("End:", end)
         # await scene.sleep(50)
         # scene.update_object(arrow)
+        print("Position:", arrow.data.position, "Rotation:", arrow.data.rotation)
 def scaleColor(s, color):
     return Color(int(s * color.red), int(s * color.green), int(s * color.blue))
 def make_box(start, rotation):
@@ -255,6 +257,7 @@ def target_handler(scene, evt, msg):
             scene.event_loop.loop.create_task(
                 animate_arrow(tStart, worldCoordsToTarget(wEnd), arrow, time + 4000, player, True)
             )
+            print("Expiring")
         else:
             player.arrows.append(arrow)
             scene.event_loop.loop.create_task(animate_arrow(tStart, tEnd, arrow, time, player))
@@ -288,9 +291,11 @@ def rotate_handler(s, evt, msg):
         difference += 2 * pi
     if difference > pi:
         difference = 2 * pi - difference
+    print(difference)
     time = (difference / pi) * 1000 * 2
     # print("Hi1")
     # print("Time:", time)
+    print(targetParent.data.rotation)
     target_rotating = True
     targetParent.dispatch_animation(
         Animation(
@@ -416,22 +421,23 @@ def make_target(x, z):
     scene.add_object(circle4)
     scene.add_object(circle5)
     scene.add_object(clicker)
-    scene.update_object(clicker, click_listener=True, evt_handler=target_handler)
+    # scene.update_object(clicker, click_listener=True, evt_handler=target_handler)
+    scene.update_object(target, click_listener=True, evt_handler=target_handler)
 
     return target
 
 def make_button(position, color, text, action):
-    global sceneParent, scene, target
+    global sceneParent, scene, targetParent
     button = Box(
-        object_id=f"BButton{text}",
+        object_id=f"CButton{text}",
         persist=True,
         position=position,
         width=1,
         height=0.5,
         depth=0.5,
         color=color,
-        rotation=(-90, 0, 0),
-        parent=target.object_id,
+        rotation=(0, 0, 0),
+        parent=targetParent.object_id,
         # parent=sceneParent
     )
     scene.add_object(button)
@@ -480,7 +486,7 @@ def start():
     )
     targetParent = Box(
         persist=True,
-        object_id="BAAATargetParent",
+        object_id="BTargetParent",
         position=(0, 0, -4),
         rotation=(0, 0, 0),
         color=(100, 0, 0),
@@ -490,15 +496,15 @@ def start():
     scene.add_object(sceneParent)
     scene.add_object(targetParent)
 
-    # make_button(( 2.5, 1.2, -4), (150, 100, 0), "Reset", reset_handler)
-    # make_button(( 2.5, 1.8, -4), (0, 0, 150), "Rotate", rotate_handler)
-    # make_button((-2.5, 1.2, -4), (150, 0, 0), "Leave", leave_handler)
-    # make_button((-2.5, 1.8, -4), (0, 150, 10), "Join", join_handler)
+    make_button(( 2.5, 1.2, 0), (150, 100, 0), "Reset", reset_handler)
+    make_button(( 2.5, 1.8, 0), (0, 0, 150), "Rotate", rotate_handler)
+    make_button((-2.5, 1.2, 0), (150, 0, 0), "Leave", leave_handler)
+    make_button((-2.5, 1.8, 0), (0, 150, 10), "Join", join_handler)
     target = make_target(0, 0)
-    make_button(( 2.5, 0, -0.3), (150, 100, 0), "Reset", reset_handler)
-    make_button(( 2.5, 0, 0.3), (0, 0, 150), "Rotate", rotate_handler)
-    make_button((-2.5, 0, -0.3), (150, 0, 0), "Leave", leave_handler)
-    make_button((-2.5, 0, 0.3), (0, 150, 10), "Join", join_handler)
+    # make_button(( 2.5, 0, -0.3), (150, 100, 0), "Reset", reset_handler)
+    # make_button(( 2.5, 0, 0.3), (0, 0, 150), "Rotate", rotate_handler)
+    # make_button((-2.5, 0, -0.3), (150, 0, 0), "Leave", leave_handler)
+    # make_button((-2.5, 0, 0.3), (0, 150, 10), "Join", join_handler)
     makePlane(-5)
 
 
