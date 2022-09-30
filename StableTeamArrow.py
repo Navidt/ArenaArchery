@@ -472,9 +472,9 @@ def makePlane(depth):
 def start():
     # print("Running start")
     global sceneParent, target, targetParent
-    # anchor = scene.get_persisted_obj("ARAnchor")
-    arMarker = {'markerid':0, 'markertype':'apriltag_36h11', 'size':150}
-    anchor = Box(persist=True, object_id="ARAnchor", position=(0, 0, 0), armarker=arMarker, scale=(0.25, 0.25, 0.25), rotation=(0, 0, 0))
+    # anchor = scene.get_persisted_obj("ARAnchor") Probably not needed at this point
+    # arMarker = {'markerid':0, 'markertype':'apriltag_36h11', 'size':150}
+    # anchor = Box(persist=True, object_id="ARAnchor", position=(0, 0, 0), armarker=arMarker, scale=(0.25, 0.25, 0.25), rotation=(-90, 0, 0))
     # scene.add_object(anchor)
     sceneParent = Box(
         persist=True,
