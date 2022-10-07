@@ -428,21 +428,7 @@ def make_target(x, z):
 
 def make_button(position, color, text, action):
     global sceneParent, scene, targetParent
-    button = Box(
-        object_id=f"CButton{text}",
-        persist=True,
-        position=position,
-        width=1,
-        height=0.5,
-        depth=0.5,
-        color=color,
-        rotation=(0, 0, 0),
-        parent=targetParent.object_id,
-        # parent=sceneParent
-    )
-    scene.add_object(button)
-    text = Text(object_id=f"Z{text}", persist=True, position=(0, 0, 0.26), rotation=(0, 0, 0), value=text, color=(0, 0, 0), parent=button.object_id)
-    scene.add_object(text)
+    button=Box(persist=True, object_id=f"CButton{text}")
     def callback(s, evt, msg):
         #higlight effect
         if evt.type == "mousedown":
@@ -453,7 +439,30 @@ def make_button(position, color, text, action):
             button.data.color = Color(color[0], color[1], color[2])
             scene.update_object(button)
             action(s, evt, msg)
-    scene.update_object(button, click_listener=True, evt_handler=callback)
+
+    button = Box(
+        object_id=f"CButton{text}",
+        persist=True,
+        position=position,
+        width=1,
+        height=0.5,
+        depth=0.5,
+        color=color,
+        rotation=(0, 0, 0),
+        parent=targetParent.object_id,
+        evt_handler=callback,
+        click_listener=True
+        # parent=sceneParent
+    )
+
+    # button.data.click_listener=True
+    # button.evt_handler=callback
+    scene.add_object(button)
+    # scene.update_object(button)
+    text = Text(object_id=f"Z{text}", persist=True, position=(0, 0, 0.26), rotation=(0, 0, 0), value=text, color=(0, 0, 0), parent=button.object_id)
+    scene.add_object(text)
+
+    # scene.update_object(button, click_listener=True, evt_handler=callback)
 
 def makePlane(depth):
     global scene, sceneParent, target
@@ -473,8 +482,8 @@ def start():
     # print("Running start")
     global sceneParent, target, targetParent
     # anchor = scene.get_persisted_obj("ARAnchor") Probably not needed at this point
-    # arMarker = {'markerid':0, 'markertype':'apriltag_36h11', 'size':150}
-    # anchor = Box(persist=True, object_id="ARAnchor", position=(0, 0, 0), armarker=arMarker, scale=(0.25, 0.25, 0.25), rotation=(-90, 0, 0))
+    # arMarker = {'markerid':1, 'markertype':'apriltag_36h11', 'size':100}
+    # anchor = Box(persist=True, object_id="ARAnchor", position=(0, 0, 0), armarker=arMarker, scale=(0.25, 0.25, 0.25), rotation=(0, 0, 0))
     # scene.add_object(anchor)
     sceneParent = Box(
         persist=True,
