@@ -1,5 +1,5 @@
 from arena import *
-from time import sleep
+from time import sleep, time
 import random
 import asyncio
 from math import *
@@ -16,10 +16,41 @@ def msg_handler(scene, obj, msg):
 cameras = {}
 players = {}
 scoreTextID = 0
+class SceneOptions(Object):
+    object_type = "scene-options"
+    object_id = "scene-options"
+    class Data():
+        pass
+    class EnvPresets():
+        active = True
+        preset = "default"
+    class Options():
+        clickableOnlyEvents = True
+        maxAVDist = 20
+        privateScene = False
+        videoFrustumCulling = True
+        videoDistanceConstraints = True
+        videoDefaultResolutionConstraint = 180
+        physics = False
+        pass
+    def __init__(self, **kwargs):
+        if not "persist" in kwargs:
+            self.__dict__["persist"] = False
+        else:
+            self.__dict__["persist"] = kwargs["persist"]
+        if "object_id" in kwargs:
+            self.__dict__["object_id"] = kwargs["object_id"]
+        self.__dict__["env-presets"] = SceneOptions.EnvPresets()
+        self.__dict__["scene-options"] = SceneOptions.Options()
+        for property in ["clickableOnlyEvents", "maxAVDist", "privateScene", "videoFrustumCulling", "videoDistanceConstraints", "videoDefaultResolutionConstraint", "physics]"]:
+            if property in kwargs:
+                self.__dict__["scene-options"][property] = kwargs[property]
+        super().__init__(object_type=SceneOptions.object_type, **kwargs)
 class Player():
     def __init__(self, camera):
         global scoreTextID, targetParent
         self.score = 0
+        self.clickStart = 0.0
         self.camera = camera
         self.id = camera.object_id
         self.name = camera.displayName
@@ -52,6 +83,7 @@ def user_left_callback(scene, camera, msg):
 
 arrow_id = 0
 arrow_velocity = 20
+gravity = -3
 arrows_flying = 0
 target_rotating = False
 sceneParent = Box()
@@ -76,6 +108,13 @@ def add(x, y):
 def plane_line_intersect(n, s, v, a):
     t = (s - dot(n, a))/dot(n, v)
     return add(scale(t, v), a)
+#plane: n*p = s, parabola: p = (0, 0, a)t^2 + bt + c
+def plane_parabola_intersect(n, s, a, b, c):
+    print("ABC:", a, b, c)
+    t = (s - dot(n, c))/dot(n, b)
+    print(t)
+    return (t, add(add(scale(t*t, (0, a, 0)), scale(t, b)), c))
+
 targetCenter = (0, 1.5, -3.75)
 target_normal = (0, 0, -1)
 target_s = dot((0, 0, -1), targetCenter)
@@ -170,7 +209,58 @@ def reloadScoreText():
         scene.update_object(playerText)
         # print(playerText.data)
         y += spacing
-
+def arrow_position(start, velocity, t):
+    x = t*velocity[0] + start[0]
+    y = 0.5*t*t*gravity + t*velocity[1] + start[1]
+    z =  t*velocity[2] + start[2]
+    return (x, y, z)
+async def shoot_arrow(arrow, player, flightTime, start, velocity, expire=False):
+    print("TIME:", flightTime)
+    print(start, velocity)
+    global arrows_flying
+    arrows_flying += 1
+    center = (target.data.position.x, target.data.position.y, target.data.position.z + 0.25)
+    p1 = arrow_position(start, velocity, flightTime*1/3)
+    p2 = arrow_position(start, velocity, flightTime*2/3)
+    p3 = arrow_position(start, velocity, flightTime)
+    print("End:", p3)
+    # flightTime *= 10
+    print("NEWtime", flightTime)
+    distanceFromCenter = distance(p3, center)
+    # arrow.dispatch_animation([
+    #     Animation(property="position", start=start, end=p1, dur=flightTime/3, easing="linear"),
+    #     Animation(property="position", start=p1, end=p2, dur=flightTime/3, easing="linear", delay=flightTime/3),
+    #     Animation(property="position", start=p2, end=p3, dur=flightTime/3, easing="linear", delay=flightTime*2/3)
+    # ])
+    animations = []
+    s = 20
+    for i in range(s):
+        dur = flightTime * 1/s * 1000
+        t1 = flightTime * i/s
+        t2 = flightTime * (i + 1)/s
+        # animations.append(Animation(property="rotation", start=(0, 0, 0), end=(90, 90, 0), dur=dur, easing="linear", delay=t1*1000))
+        animations.append(Animation(property="position", start=arrow_position(start, velocity, t1), end=arrow_position(start, velocity, t2), dur=dur, easing="linear", delay=t1*1000))
+    # arrow.dispatch_animation([
+    #     Animation(property="position", start=start, end=p1, dur=flightTime/3*1000, easing="linear"),
+    #     Animation(property="position", start=p1, end=p2, dur=flightTime/3*1000, easing="linear", delay=flightTime/3*1000),
+    #     Animation(property="position", start=p2, end=p3, dur=flightTime/3*1000, easing="linear", delay=flightTime*2/3*1000)
+    # ])
+    arrow.dispatch_animation(animations)
+    scene.run_animations(arrow)
+    await scene.sleep(flightTime * 1000)
+    arrows_flying -= 1
+    if expire:
+        scene.delete_object(arrow)
+    else:
+        update_score(distanceFromCenter, player)
+        arrow.data.position = Position(p3[0], p3[1], p3[2])
+def arrow_hit_target(arrow):
+    global arrows_flying, scene
+    arrows_flying -= 1
+    arrow.data.physics = Physics("none")
+    secne.update_object(arrow)
+#Try to update individually
+#Drop in the middle
 async def animate_arrow(start, end, arrow, time, player, expire=False):
     global arrows_flying
     arrows_flying += 1
@@ -219,11 +309,21 @@ def worldCoordsToTarget(world):
     return newWorld2
 def target_handler(scene, evt, msg):
     global arrow_velocity, target_s, target_normal, players, targetParent, target_rotating
-    if evt.type == "mouseup":
-        cameraID = evt.data.source
-        if not cameraID in players.keys() or target_rotating:
-            return
-        player = players[cameraID]
+    cameraID = evt.data.source
+    if not cameraID in players.keys() or target_rotating:
+        return
+    player = players[cameraID]
+    if evt.type == "mousedown":
+        player.clickStart = time()
+    elif evt.type == "mouseup":
+        clickDuration = time() - player.clickStart
+        arrowSpeed = clickDuration * 10
+        if arrowSpeed < 5:
+            arrowSpeed = 5
+        elif arrowSpeed > 40:
+            arrowSpeed = 40
+        # arrowSpeed = 20
+        print("ARROWSPEED", arrowSpeed)
         camera = player.camera
         alignArrow = R.from_euler('x', -90, degrees=True)
         rot = R.from_quat((camera.data.rotation.x, camera.data.rotation.y, camera.data.rotation.z, camera.data.rotation.w))
@@ -233,34 +333,61 @@ def target_handler(scene, evt, msg):
         targetRotate = R.from_euler('y', -degrees, degrees=True)
         rot2 = (targetRotate * rot * alignArrow).as_quat()
         rotation = Rotation(rot2[0], rot2[1], rot2[2], rot2[3])
+        #R.from_euler('y', degrees, degrees=True)
+        k = (R.from_euler('y', -degrees, degrees=True) * rot).apply((0, 0, -1))
+        print("k:", k)
         wStart = (evt.data.clickPos.x, evt.data.clickPos.y, evt.data.clickPos.z)
         tStart = worldCoordsToTarget(wStart)
         # tStart = (evt.data.clickPos.x, evt.data.clickPos.y, evt.data.clickPos.z + 4)
         # print(start)
         # start = worldCoordsToTarget(start)
         # print(target_normal)
-        wEnd = plane_line_intersect(target_normal, target_s, v, wStart)
+        # wEnd = plane_line_intersect(target_normal, target_s, v, wStart)
+        velocityW = scale(arrowSpeed, v)
+        velocityT = scale(arrowSpeed, k)
+        print("velocityW:", velocityW)
+        print("velocityT:", velocityT)
+        print("Target Normal:", target_normal)
+        flightTime, wEnd = plane_parabola_intersect(target_normal, target_s, gravity / 2, velocityW, wStart)
+        print("wEND:", wEnd)
         tEnd = worldCoordsToTarget(wEnd)
-        # end = add(plane_line_intersect(target_normal, target_s, v, wStart), (0, 0, 4))
+        """
         dX = tEnd[0] - tStart[0]
         dY = tEnd[1] - tStart[1]
         dZ = tEnd[2] - tStart[2]
         magnitude = (dX**2 + dY**2 + dZ**2)**0.5
+        """
         arrow = make_arrow(tStart, rotation, player.arrowHeadColor, player.arrowShaftColor)
+        # shoot_arrow(impulse, arrow, player)
+        """
         time = magnitude / arrow_velocity * 1000
+        """
         # print("HI4")
         #animate the arrow flying from the camera to the target
         distanceFromCenter = distance(tEnd, worldCoordsToTarget(targetCenter))
-        # distanceFromCenter = 1
+        print("DISTANCE:", distanceFromCenter)
         if distanceFromCenter > radius:
+            """
             wEnd = add(wEnd, scale(4*arrow_velocity, (v[0], v[1], v[2])))
             scene.event_loop.loop.create_task(
                 animate_arrow(tStart, worldCoordsToTarget(wEnd), arrow, time + 4000, player, True)
             )
+            """
+            flightTime += 4
+            # scene.event_loop.loop.create_task(
+            #     animate_arrow(tStart, worldCoordsToTarget(wEnd), arrow, time + 4000, player, True)
+            # )
+            scene.event_loop.loop.create_task(
+                shoot_arrow(arrow, player, flightTime, tStart, velocityT, True)
+            )
             print("Expiring")
         else:
             player.arrows.append(arrow)
-            scene.event_loop.loop.create_task(animate_arrow(tStart, tEnd, arrow, time, player))
+            # scene.event_loop.loop.create_task(animate_arrow(tStart, tEnd, arrow, time, player))
+            scene.event_loop.loop.create_task(
+                shoot_arrow(arrow, player, flightTime, tStart, velocityT)
+            )
+
 def reset_handler(s, evt, msg):
     global scene, player_to_score, players
     cameraID = evt.data.source
@@ -502,6 +629,8 @@ def start():
         material=Material(transparent=True, opacity=0),
         parent=sceneParent
     )
+    # sceneOptions = SceneOptions(physics=True)
+    # scene.add_object(sceneOptions)
     scene.add_object(sceneParent)
     scene.add_object(targetParent)
 
