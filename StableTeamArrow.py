@@ -174,10 +174,13 @@ def make_arrow(position, rotation, shaftColor, headColor):
     arrow_id += 1
     return topCone
 
-def rotation_from_vector(dX, dY, dZ):
+def rotation_from_vector(vec):
     #returns a rotation from (0, 1, 0) to the given vector
     #mainly to orient the arrow (which is normally vertical)
     #a 3d rotation only needs two axis rotations; X and Z are arbitrary axes
+    dX = vec[0]
+    dY = vec[1]
+    dZ = vec[2]
     thetaZ = asin(-1 * dX)
     thetaX = acos(dY/(1 - dX**2)**0.5)
     if abs(sin(thetaX)*cos(thetaZ) - dZ) > 0.05:
@@ -214,32 +217,42 @@ def arrow_position(start, velocity, t):
     y = 0.5*t*t*gravity + t*velocity[1] + start[1]
     z =  t*velocity[2] + start[2]
     return (x, y, z)
+def arrow_velocity(velocity, t):
+    vy = velocity[1] + gravity * t
+    return (velocity[0], vy, velocity[2])
+def normalize(vec):
+    magnitude = (vec[0]**2 + vec[1]**2 + vec[2]**2)**0.5
+    return scale(1/magnitude, vec)
 async def shoot_arrow(arrow, player, flightTime, start, velocity, expire=False):
     print("TIME:", flightTime)
     print(start, velocity)
     global arrows_flying
     arrows_flying += 1
     center = (target.data.position.x, target.data.position.y, target.data.position.z + 0.25)
-    p1 = arrow_position(start, velocity, flightTime*1/3)
-    p2 = arrow_position(start, velocity, flightTime*2/3)
-    p3 = arrow_position(start, velocity, flightTime)
-    print("End:", p3)
     # flightTime *= 10
+    end = arrow_position(start, velocity, flightTime)
     print("NEWtime", flightTime)
-    distanceFromCenter = distance(p3, center)
-    # arrow.dispatch_animation([
-    #     Animation(property="position", start=start, end=p1, dur=flightTime/3, easing="linear"),
-    #     Animation(property="position", start=p1, end=p2, dur=flightTime/3, easing="linear", delay=flightTime/3),
-    #     Animation(property="position", start=p2, end=p3, dur=flightTime/3, easing="linear", delay=flightTime*2/3)
-    # ])
+    distanceFromCenter = distance(end, center)
     animations = []
-    s = 20
+    s = 5
+    dur = flightTime * 1/s * 1000
+    # for i in range(s):
+    #     t1 = flightTime * i/s
+    #     t2 = flightTime * (i + 1)/s
+    #     # animations.append(Animation(property="rotation", start=(0, 0, 0), end=(90, 90, 0), dur=dur, easing="linear", delay=t1*1000))
+    #     animations.append(Animation(property="position", start=arrow_position(start, velocity, t1), end=arrow_position(start, velocity, t2), dur=dur, easing="linear", delay=t1*1000))
+    currentPosition = start
+    currentRotation = (arrow.data.rotation.x, arrow.data.rotation.y, arrow.data.rotation.z)
     for i in range(s):
-        dur = flightTime * 1/s * 1000
         t1 = flightTime * i/s
         t2 = flightTime * (i + 1)/s
-        # animations.append(Animation(property="rotation", start=(0, 0, 0), end=(90, 90, 0), dur=dur, easing="linear", delay=t1*1000))
-        animations.append(Animation(property="position", start=arrow_position(start, velocity, t1), end=arrow_position(start, velocity, t2), dur=dur, easing="linear", delay=t1*1000))
+        nextVelocity = arrow_velocity(velocity, t2)
+        nextRotation = rotation_from_vector(normalize(nextVelocity))
+        nextPosition = arrow_position(start, velocity, t2)
+        animations.append(Animation(property="position", start=currentPosition, end=nextPosition, dur=dur, easing="linear", delay=t1*1000))
+        animations.append(Animation(property="rotation", start=currentRotation, end=nextRotation, dur=dur, easing="linear", delay=t1*1000))
+        currentPosition = nextPosition
+        currentRotation = nextRotation
     # arrow.dispatch_animation([
     #     Animation(property="position", start=start, end=p1, dur=flightTime/3*1000, easing="linear"),
     #     Animation(property="position", start=p1, end=p2, dur=flightTime/3*1000, easing="linear", delay=flightTime/3*1000),
@@ -253,7 +266,7 @@ async def shoot_arrow(arrow, player, flightTime, start, velocity, expire=False):
         scene.delete_object(arrow)
     else:
         update_score(distanceFromCenter, player)
-        arrow.data.position = Position(p3[0], p3[1], p3[2])
+        arrow.data.position = Position(end[0], end[1], end[2])
 def arrow_hit_target(arrow):
     global arrows_flying, scene
     arrows_flying -= 1
@@ -330,10 +343,9 @@ def target_handler(scene, evt, msg):
         v = rot.apply((0, 0, -1))
         # rotation = rotation_from_vector(v[0], v[1], v[2])
         degrees = targetParent.data.rotation.y
-        targetRotate = R.from_euler('y', -degrees, degrees=True)
-        rot2 = (targetRotate * rot * alignArrow).as_quat()
-        rotation = Rotation(rot2[0], rot2[1], rot2[2], rot2[3])
-        #R.from_euler('y', degrees, degrees=True)
+        #targetRotate = R.from_euler('y', -degrees, degrees=True)
+        #rot2 = (targetRotate * rot * alignArrow).as_quat()
+        #rotation = Rotation(rot2[0], rot2[1], rot2[2], rot2[3])
         k = (R.from_euler('y', -degrees, degrees=True) * rot).apply((0, 0, -1))
         print("k:", k)
         wStart = (evt.data.clickPos.x, evt.data.clickPos.y, evt.data.clickPos.z)
@@ -345,6 +357,8 @@ def target_handler(scene, evt, msg):
         # wEnd = plane_line_intersect(target_normal, target_s, v, wStart)
         velocityW = scale(arrowSpeed, v)
         velocityT = scale(arrowSpeed, k)
+        rotationT = rotation_from_vector(k)
+        rotation = Rotation(rotationT[0], rotationT[1], rotationT[2])
         print("velocityW:", velocityW)
         print("velocityT:", velocityT)
         print("Target Normal:", target_normal)
